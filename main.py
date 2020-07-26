@@ -1,97 +1,236 @@
 import pygame
 import math
+from queue import PriorityQueue
 
-displayWidth = 800
-displayHeight = 800
+width = 800
+win = pygame.display.set_mode((width, width))
+pygame.display.set_caption("A* Visualisation")
 
-pygame.init()
-win = pygame.display.set_mode((displayWidth, displayHeight))
-pygame.display.set_caption("a* pathfinding visualisation")
 
-clock = pygame.time.Clock()
+WHITE = (255,255,255)
+RED = (19,19,19)
+GREEN = (0,255,0)
+BLUE = (0,0,255)
+YELLOW = (255,255,0)
+BLACK = (0,0,0)
+PURPLE = (128, 0, 128)
+ORANGE = (255, 165, 0)
+GREY = (128, 128, 128)
+TURK = (64, 224, 208)
 
-class Grid:
-    def __init__(self, gridSizeX, gridSizeY, cellSize, barrierCells, startCell, endCell, drawMode):
-        self.gridSizeX = gridSizeX
-        self.gridSizeY = gridSizeY
-        self.cellSize = cellSize
-        self.barrierCells = []
-        self.startCell = []
-        self.endCell = []
-        self.drawMode = drawMode
+class Node:
+    def __init__(self, row, col, width, total_rows):
+        self.row = row
+        self.col = col
+        self.width = width
+        self.y = col * width
+        self.x = row * width
+        self.total_rows = total_rows
+        self.color = WHITE
+        self.neighbors = []
     
-    def drawGrid(self):
-        for x in range(20, self.gridSizeX, 20):
-            pygame.draw.line(win, (255,255,255), (x, 0), (x, 800))
-        for y in range(20, self.gridSizeY, 20):
-            pygame.draw.line(win, (255,255,255), (0, y), (800, y))
+    def getPos(self):
+        return self.row, self.col
     
-    def drawCells(self):
-        for cell in self.barrierCells:
-            pygame.draw.rect(win, (255,0,0), (cell[0], cell[1], 20,20))
-       
-    def getSurroundingNodes(self, cellX, cellY):
-        return [(cellX-20, cellY-20), (cellX-20, cellY), (cellX-20, cellY + 20), (cellX, cellY+20), (cellX+20, cellY+20), (cellX+20, cellY), (cellX+20, cellY-20), (cellX, cellY-20)]
-    
-    def getDistanceFromNode(self, node1, node2):
-        xDiff = node1[0] - node2[0]
-        yDiff = node1[1] - node2[1]
-        rawDist = math.sqrt(xDiff**2) + math.sqrt(yDiff**2)
-        return [rawDist / 20]
+    def is_closed(self):
+        return self.color == RED
 
-def update():
-    win.fill((0,0,0))
-    grid.drawGrid()
+    def is_open(self):
+        return self.color == GREEN
+
+    def is_barrier(self):
+        return self.color == BLACK
+    
+    def is_start(self):
+        return self.color == ORANGE
+
+    def is_end(self):
+        return self.color == TURKH
+    
+    def reset(self):
+        self.color = WHITE
+
+    def make_start(self):
+        self.color = ORANGE
+   
+    def make_closed(self):
+        self.color = RED
+    
+    def make_open(self):
+        self.color = GREEN
+
+    def make_barrier(self):
+        self.color = BLACK
+    
+    def make_end(self):
+        self.color = TURK
+    
+    def make_path(self):
+        self.color = PURPLE
+    
+    def draw(self, win):
+        pygame.draw.rect(win, self.color, (self.x, self.y, self.width, self.width))
+    
+    def update_neighbors(self, grid):
+        self.neighbors = []
+        if self.row < self.total_rows -1 and not grid[self.row + 1][self.col].is_barrier(): # DOWN
+            self.neighbors.append(grid[self.row + 1][self.col])
+        
+        if self.row > 0 and not grid[self.row -1][self.col].is_barrier():# UP
+            self.neighbors.append(grid[self.row -1][self.col])
+        
+        if self.col < self.total_rows -1 and not grid[self.row][self.col + 1].is_barrier(): # LEFT
+            self.neighbors.append(grid[self.row][self.col + 1])
+        
+        if self.col > 0 and not grid[self.row][self.col - 1].is_barrier(): # RIGHT
+            self.neighbors.append(grid[self.row][self.col - 1])
+            
+
+    def __lt__(self,other):
+        return False
+
+def h(p1,p2):
+     x1, y1 = p1
+     x2, y2 = p2
+     return abs(x1 - x2) + (y1 - 2)
+
+def reconstructPath(came_from, current, draw):
+    while current in came_from:
+        current = came_from[current]
+        current.make_path()
+        draw()
+
+def algorithm(draw, grid, start, end):
+    count = 0
+    open_set = PriorityQueue()
+    open_set.put((0, count, start))
+    came_from = {}
+    g_score = {node: float("inf") for row in grid for node in row}
+    g_score[start] = 0
+    f_score = {node: float("inf") for row in grid for node in row}
+    f_score[start] = h(start.getPos(), end.getPos())
+
+    open_set_hash = {start}
+
+    while not open_set.empty():
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+        
+        current = open_set.get()[2]
+        open_set_hash.remove(current)
+
+        #make path
+        if current == end:
+            reconstructPath(came_from, end, draw)
+            end.make_end()
+            return True
+        
+        for neighbor in current.neighbors:
+            temp_g_score = g_score[current] + 1
+
+            if temp_g_score < g_score[neighbor]:
+                came_from[neighbor] = current
+                g_score[neighbor] = temp_g_score
+                f_score[neighbor] = temp_g_score + h(neighbor.getPos(), end.getPos())
+                if neighbor not in open_set_hash:
+                    count += 1
+                    open_set.put((f_score[neighbor], count, neighbor))
+                    open_set_hash.add(neighbor)
+                    neighbor.make_open()
+        draw()
+
+        if current != start:
+            current.make_closed()
+    return False
+
+
+def make_grid(rows, width):
+    grid = []
+    gap = width // rows
+    for i in range(rows):
+        grid.append([])
+        for j in range(rows):
+            node = Node(i, j, gap, rows)
+            grid[i].append(node)
+    
+    return grid
+
+def drawGrid(win,cellWidth):
+    for i in range(0,width,cellWidth):
+        pygame.draw.line(win, (10,10,10), (i, 0), (i,width))
+        pygame.draw.line(win, (10,10,10), (0,i), (width, i))
+
+def draw(win, grid, rows, width):
+    win.fill(WHITE)
+    for row in grid:
+        for node in row:
+            node.draw(win)
+    
+    drawGrid(win, 16)
     pygame.display.update()
 
-def stepRound(x, base=20):
-    return base * round(x/base)
+def get_clicked_pos(pos, rows, width):
+    gap = width // rows
+    i,j = pos
 
-grid = Grid(displayWidth, displayHeight, 20, [],[0,0], [0,0], "barrier")
-grid.barrierCells.append((-20,-20))
-while True:
-    clock.tick(60)
-    mouseX = pygame.mouse.get_pos()[0]
-    mouseY = pygame.mouse.get_pos()[1]
-    currentMouseGrid = (stepRound(mouseX), stepRound(mouseY))
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            quit()
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_x:
-                grid.barrierCells.pop()
-            
-            if event.key == pygame.K_r and grid.startCell and grid.endCell:
-                print("startPos: ", int(grid.startCell[0] / 20), "|", int(grid.startCell[1] / 20))
-                print("endPos: ", int(grid.endCell[0] / 20), "|", int(grid.endCell[1] / 20))
-            
-            if event.key == pygame.K_g:
-                x = grid.getDistanceFromNode(grid.startCell, grid.endCell)
-                print(x)
+    row = i // gap
+    col = j // gap
+    return row, col
 
-        if pygame.mouse.get_pressed()[0] and currentMouseGrid != grid.barrierCells[-1]:
-            grid.barrierCells.append((stepRound(mouseX), stepRound(mouseY)))
-        
-        if pygame.mouse.get_pressed()[2]:
-            grid.startCell.clear()
-            grid.startCell.append(stepRound(mouseX))
-            grid.startCell.append(stepRound(mouseY))
-        
-        if pygame.mouse.get_pressed()[1]:
-            grid.endCell.clear()
-            grid.endCell.append(stepRound(mouseX))
-            grid.endCell.append(stepRound(mouseY))
 
-    win.fill((0,0,0))
-    pygame.draw.rect(win, (255, 0, 0), (stepRound(mouseX), stepRound(mouseY), 20 ,20))
-    if grid.startCell:
-        pygame.draw.rect(win, (0,255,0), (grid.startCell[0], grid.startCell[1], 20,20))
-        #  for node in grid.getSurroundingNodes(grid.startCell[0], grid.startCell[1]):
-        #     pygame.draw.rect(win, (100, 0,255), (node[0], node[1], 20, 20))
-    if grid.endCell:
-        pygame.draw.rect(win, (0,0,255), (grid.endCell[0], grid.endCell[1], 20,20))
+def main(win, width):
+    ROWS = 50
+    grid = make_grid(ROWS, width)
+
+    start = None
+    end = None
     
-    grid.drawGrid()
-    grid.drawCells()
-    pygame.display.update()
+    run = True
+    started = False
+    
+    while True:
+        draw(win, grid, ROWS, width)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+            
+            if started:
+                continue
+
+            if pygame.mouse.get_pressed()[0]:
+                pos = pygame.mouse.get_pos()
+                row, col = get_clicked_pos(pos, ROWS, width)
+                node = grid[row][col]
+                if not start:
+                    start = node
+                    start.make_start()
+                
+                elif not end and node != start:
+                    end = node
+                    end.make_end()
+                
+                elif node != end and node != start:
+                    node.make_barrier()
+
+            elif pygame.mouse.get_pressed()[2]:
+                pos = pygame.mouse.get_pos()
+                row, col = get_clicked_pos(pos, ROWS, width)
+                node = grid[row][col]
+                node.reset()
+                if node == start:
+                    start = None
+                if node == end:
+                    end = None
+            
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE and not started:
+                    for row in grid:
+                        for node in row:
+                            node.update_neighbors(grid)
+                    
+                    algorithm(lambda: draw(win, grid, ROWS, width), grid, start, end)
+
+main(win, width)
